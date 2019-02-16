@@ -1,3 +1,7 @@
+/* Lab 1 - OS Spring 2019		*/
+/* Xinyi Liu (xl2700)			*/
+/* COMPILER VERSION: gcc-4.9.2	*/
+
 #include <cstdlib>
 #include <iostream>
 #include <fstream>

@@ -1,5 +1,5 @@
 linker: linker.cpp
-	g++ -g linker.cpp -o linker
+	g++ -std=c++11 linker.cpp -o linker
 
 clean:
-	rm -f linker *~
+	rm -f linker *.o
