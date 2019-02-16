@@ -1,10 +1,11 @@
 /* Lab 1 - OS Spring 2019		*/
 /* Xinyi Liu (xl2700)			*/
-/* COMPILER VERSION: gcc-4.9.2	*/
+/* Compiler Version: gcc-4.9.2	*/
 
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 #include <cstring>
 #include <string>
 #include <regex>
@@ -51,7 +52,7 @@ void _parseError(int linenum, int lineoffset, int errcode) {
 
 void _errorMsg(int errcode, string name) {
 	if(errcode == 3 && name.length() != 0) {
-		cout << "Error: " << name << " is not defined; zero used\n";				// rule 3
+		cout << " Error: " << name << " is not defined; zero used\n";					// rule 3
 	}
 	else{
 		static char* errstr[] = {
@@ -314,6 +315,30 @@ void pass1(char *path) {
 	file.close();
 }
 
+struct _memory {
+	int address;
+	int op;
+	int errcode;
+	string name;
+};
+
+void printModule(vector<_memory> &memoryMap) {
+	for(vector<_memory>::iterator iter = memoryMap.begin(); iter != memoryMap.end(); iter++) {
+		if((*iter).errcode == -1) {
+			cout << setw(3) << setfill('0') << (*iter).address << ": " << setw(4) << setfill('0') << (*iter).op << "\n";
+		}
+		else {
+			cout << setw(3) << setfill('0') << (*iter).address << ": " << setw(4) << setfill('0') << (*iter).op;
+			if((*iter).errcode == 3) {
+				_errorMsg((*iter).errcode, (*iter).name);
+			}
+			else {
+				_errorMsg((*iter).errcode, "");
+			}
+		}
+	}
+}
+
 void pass2(char *path) {
 	file.clear();
 	file.open(path);
@@ -326,10 +351,11 @@ void pass2(char *path) {
 	lineoffset = 0;
 	modulenum = 0;
 	baseaddress = 0;
-	totalinstrnum = 0;
 
 	line = NULL;
 	remain = NULL;
+
+	cout << "Memory Map\n";
 		
 	while(!file.eof()) {
 		//createModule();
@@ -348,26 +374,186 @@ void pass2(char *path) {
 		}
 
 		/* USE LIST */
+		vector<_symbol> useList;
 		int usecount = readInt(false);
 		for(int i = 0; i < usecount; i++) {
 			_symbol sym = readSymbol();
+			bool defined = false;
+			for(int j = 0; j < symbolTable.size(); j++) {
+				if(symbolTable[j].name == sym.name) {
+					useList.push_back(symbolTable[j]);
+					symbolTable[j].used = true;
+					defined = true;
+					break;
+				}
+			}
+			if(!defined) {
+				/* RULE 3 */
+				sym.errcode = 3;
+				createSymbol(sym, 0);
+				for(int j = 0; j < symbolTable.size(); j++) {
+					if(symbolTable[j].name == sym.name) {
+						useList.push_back(symbolTable[j]);
+						symbolTable[j].used = true;
+						break;
+					}
+				}
+			}
 		}
 
 		/* PROGRAM LIST */
+		vector<_memory> memoryMap;
 		int codecount = readInt(false);
-		totalinstrnum += codecount;
 		for(int i = 0; i < codecount; i++) {
 			string addressmode = readIEAR();
-			int operand = readInt(false);
+			int op = readInt(false);
+			if(addressmode == "I") {
+				if(op > 9999) {
+					/* RULE 10 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = 9999;
+					newAddress.errcode = 5;
+					memoryMap.push_back(newAddress);
+				}
+				else {
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = op;
+					newAddress.errcode = -1;
+					memoryMap.push_back(newAddress);
+				}
+			}
+			else if(addressmode == "E") {
+				if(op > 9999) {
+					/* RULE 11 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = 9999;
+					newAddress.errcode = 6;
+					memoryMap.push_back(newAddress);
+				}
+				else if((op % 1000) >= usecount) {
+					/* RULE 6 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = op;
+					newAddress.errcode = 2;
+					memoryMap.push_back(newAddress);
+				}
+				else {
+					int operand = op % 1000;
+					/*
+					for(vector<_symbol>::iterator iter = symbolTable.begin(); iter != symbolTable.end(); iter++) {
+						if((*iter).name == useList[operand].name) {
+							(*iter).used = true;
+							useList[operand].used = true;
+							break;
+						}
+					}
+					*/
+					useList[operand].used = true;
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = (op / 1000) * 1000 + useList[operand].address;
+					/* RULE 3 */
+					if(useList[operand].errcode == 4) {
+						newAddress.errcode = -1;
+					}
+					else {
+						newAddress.errcode = useList[operand].errcode;
+					}
+					if(newAddress.errcode == 3) {
+						newAddress.name = useList[operand].name;
+					}
+					memoryMap.push_back(newAddress);
+				}
+			}
+			else if(addressmode == "A") {
+				if(op > 9999) {
+					/* RULE 11 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = 9999;
+					newAddress.errcode = 6;
+					memoryMap.push_back(newAddress);
+				}
+				else if((op % 1000) >= 512) {
+					/* RULE 8 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = (op / 1000) * 1000;
+					newAddress.errcode = 0;
+					memoryMap.push_back(newAddress);
+				}
+				else {
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = op;
+					newAddress.errcode = -1;
+					memoryMap.push_back(newAddress);
+				}
+			}
+			else if(addressmode == "R") {
+				if(op > 9999) {
+					/* RULE 11 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = 9999;
+					newAddress.errcode = 6;
+					memoryMap.push_back(newAddress);
+				}
+				else if((op % 1000) > codecount) {
+					/* RULE 9 */
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = (op / 1000) * 1000 + baseaddress;
+					newAddress.errcode = 1;
+					memoryMap.push_back(newAddress);
+				}
+				else {
+					_memory newAddress;
+					newAddress.address = baseaddress + i;
+					newAddress.op = op + baseaddress;
+					newAddress.errcode = -1;
+					memoryMap.push_back(newAddress);
+				}
+			}
+			else {
+			}
+		}
+
+		printModule(memoryMap);
+
+		/* RULE 7 */
+		for(vector<_symbol>::iterator iter = useList.begin(); iter != useList.end(); iter++) {
+			if((*iter).used == false) {
+				_warnMsg(1, modulenum, (*iter).name, -1, -1);
+			}
 		}
 
 		baseaddress += codecount;
 	}
 
+	cout << endl;
+
+	/* RULE 4 */
+	for(vector<_symbol>::iterator iter = symbolTable.begin(); iter != symbolTable.end(); iter++) {
+		if((*iter).used == false) {
+			_warnMsg(2, (*iter).module, (*iter).name, -1, -1);
+		}
+	}
+
+	cout << endl;
+
 	file.close();
 }
 
 int main(int argc, char **argv) {
+	if(argc < 2) {
+		return 0;
+	}
 	pass1(argv[1]);
+	pass2(argv[1]);
 	return 0;
 }
