@@ -254,6 +254,7 @@ private:
 
 public:
 	void add_to_queue(process *p) {
+		p->STATE = READY;
 		run_queue.push_back(p);
 	};
 
@@ -275,21 +276,93 @@ public:
 };
 
 class LCFS : public scheduler {
+private:
+	list<process *> run_queue;
+
 public:
-	void add_to_queue(process *p);
-	process *get_next_process();
+	void add_to_queue(process *p) {
+		p->STATE = READY;
+		run_queue.push_back(p);
+	};
+
+	process *get_next_process()  {
+		if(run_queue.empty()) {
+			return nullptr;
+		}
+		else {
+			process *p = run_queue.back();
+			run_queue.pop_back();
+			return p;
+		}
+	};
+
+	LCFS() {
+		type = "LCFS";
+		preempt = false;
+	};
 };
 
 class SRTF : public scheduler {
+private:
+	list<process *> run_queue;
+
 public:
-	void add_to_queue(process *p);
-	process *get_next_process();
+	void add_to_queue(process *p) {
+		p->STATE = READY;
+		list<process *>::iterator iter;
+		for(iter = run_queue.begin(); iter != run_queue.end(); iter++) {
+			if((*iter)->RCT > p->RCT) {
+				run_queue.insert(iter, p);
+				break;
+			}
+		}
+		if(iter == run_queue.end()) {
+			run_queue.push_back(p);
+		}
+	};
+
+	process *get_next_process()  {
+		if(run_queue.empty()) {
+			return nullptr;
+		}
+		else {
+			process *p = run_queue.front();
+			run_queue.pop_front();
+			return p;
+		}
+	};
+
+	SRTF() {
+		type = "SRTF";
+		preempt = false;
+	};
 };
 
 class RR : public scheduler {
+private:
+	list<process *> run_queue;
+
 public:
-	void add_to_queue(process *p);
-	process *get_next_process();
+	void add_to_queue(process *p) {
+		p->STATE = READY;
+		run_queue.push_back(p);
+	};
+
+	process *get_next_process()  {
+		if(run_queue.empty()) {
+			return nullptr;
+		}
+		else {
+			process *p = run_queue.front();
+			run_queue.pop_front();
+			return p;
+		}
+	};
+
+	RR() {
+		type = "RR";
+		preempt = false;
+	};
 };
 
 class PRIO : public scheduler {
@@ -482,8 +555,8 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 	FT = current_time;
 }
 
-void print_scheduler(scheduler *s) {
-	cout << s->type << "\n";
+void print_scheduler(string type) {
+	cout << type << "\n";
 	double TT = 0.0;
 	double CW = 0.0;
 	for(int i = 0; i < stat.size(); i++) {
@@ -572,10 +645,11 @@ int main(int argc, char *argv[]) {
 		process_id++;
 	}
 
-	scheduler *s = new FCFS();
+	scheduler *s = new RR();
+	quantum = stoi(optarg);
 
 	simulation(s, eq, quantum, r);
-	print_scheduler(s);
+	print_scheduler(s->type);
 
 	return 0;
 }
