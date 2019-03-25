@@ -359,22 +359,140 @@ public:
 		}
 	};
 
-	RR() {
-		type = "RR";
+	RR(int quantum) {
+		type = "RR " + to_string(quantum);
 		preempt = false;
 	};
 };
 
 class PRIO : public scheduler {
+private:
+	//int maxprio;
+	list<process *> active;
+	list<process *> expired;
+
 public:
-	void add_to_queue(process *p);
-	process *get_next_process();
+	void add_to_queue(process *p) {
+		if(p->STATE == RUNNING) {
+			p->dPRIO -= 1;
+		}
+		else {
+			p->dPRIO = p->PRIO - 1;
+		}
+		p->STATE = READY;
+		// still active
+		list<process *>::iterator iter;
+		if(p->dPRIO >= 0) {
+			for(iter = active.begin(); iter != active.end(); iter++) {
+				if((*iter)->dPRIO < p->dPRIO) {
+					active.insert(iter, p);
+					break;
+				}
+			}
+			if(iter == active.end()) {
+				active.push_back(p);
+			}
+		}
+		// expired
+		else {
+			p->dPRIO = p->PRIO - 1;
+			for(iter = expired.begin(); iter != expired.end(); iter++) {
+				if((*iter)->dPRIO < p->dPRIO) {
+					expired.insert(iter, p);
+					break;
+				}
+			}
+			if(iter == expired.end()) {
+				expired.push_back(p);
+			}
+		}
+	};
+
+	process *get_next_process() {
+		// swap queues if no process is active
+		if(active.empty()) {
+			active.swap(expired);
+		}
+		if(active.empty()) {
+			return nullptr;
+		}
+		else {
+			process *p = active.front();
+			active.pop_front();
+			return p;
+		}
+	};
+
+	PRIO(int quantum) {
+		type = "PRIO " + to_string(quantum);
+		preempt = false;
+		//maxprio = mp;
+	};
 };
 
 class PREPRIO : public scheduler {
+private:
+	//int maxprio;
+	list<process *> active;
+	list<process *> expired;
+
 public:
-	void add_to_queue(process *p);
-	process *get_next_process();
+	void add_to_queue(process *p) {
+		if(p->STATE == RUNNING) {
+			p->dPRIO -= 1;
+		}
+		else {
+			p->dPRIO = p->PRIO - 1;
+		}
+		p->STATE = READY;
+		// still active
+		list<process *>::iterator iter;
+		if(p->dPRIO >= 0) {
+			for(iter = active.begin(); iter != active.end(); iter++) {
+				if((*iter)->dPRIO < p->dPRIO) {
+					active.insert(iter, p);
+					break;
+				}
+			}
+			if(iter == active.end()) {
+				active.push_back(p);
+			}
+		}
+		// expired
+		else {
+			p->dPRIO = p->PRIO - 1;
+			for(iter = expired.begin(); iter != expired.end(); iter++) {
+				if((*iter)->dPRIO < p->dPRIO) {
+					expired.insert(iter, p);
+					break;
+				}
+			}
+			if(iter == expired.end()) {
+				expired.push_back(p);
+			}
+		}
+	};
+
+	process *get_next_process() {
+		// swap queues if no process is active
+		if(active.empty()) {
+			active.swap(expired);
+		}
+		if(active.empty()) {
+			return nullptr;
+		}
+		else {
+			process *p = active.front();
+			active.pop_front();
+			return p;
+		}
+	};
+
+	PREPRIO(int quantum) {
+		type = "PREPRIO " + to_string(quantum);
+		preempt = true;
+		//maxprio = mp;
+	};
 };
 
 int FT = 0;				// finishing time
@@ -407,13 +525,13 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 							break;
 						}
 					}
-					if(timestamp > 0 && timestamp != current_time) {
+					if(timestamp > 0 && timestamp != current_time && (p->PRIO - 1) > current_running_process->dPRIO) {
 						current_running_process->RCT = (*iter)->RCT - (current_time - current_running_process->STATE_TS);
 						current_running_process->CCB = (*iter)->CCB - (current_time - current_running_process->STATE_TS);
+						eq->q.erase(iter);
+						event *temp = new event(current_time, current_running_process, RUNNING, READY, TRANS_TO_PREEMPT);
+						eq->put_event(temp);
 					}
-					eq->q.erase(iter);
-					event *temp = new event(current_time, current_running_process, RUNNING, READY, TRANS_TO_PREEMPT);
-					eq->put_event(temp);
 				}
 				// must add to run_queue
 				p->STATE_TS = current_time;
@@ -587,6 +705,8 @@ void print_scheduler(string type) {
 int main(int argc, char *argv[]) {
 	string scheduler_type = "";
 	bool verbose = false;
+	int quantum = 10000;
+	int maxprio = 4;
 
 	// read command - get output/scheduler type
 	int c;
@@ -610,13 +730,56 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	// set up scheduler
+	scheduler *s = nullptr;
+	switch(scheduler_type[0]) {
+		case 'F':
+			s = new FCFS();
+			break;
+		case 'L':
+			s = new LCFS();
+			break;
+		case 'S':
+			s = new SRTF();
+			break;
+		case 'R': {
+			quantum = stoi(scheduler_type.substr(1, string::npos));
+			s = new RR(quantum);
+			break;
+		}
+		case 'P': {
+			string::size_type delimiter = scheduler_type.find(':');
+			if (delimiter != string::npos) {
+				quantum = stoi(scheduler_type.substr(1, delimiter));
+				maxprio = stoi(scheduler_type.substr(delimiter + 1, string::npos));
+			}
+			else {
+				quantum = stoi(scheduler_type.substr(1, string::npos));
+			}
+			s = new PRIO(quantum);
+			break;
+		}
+		case 'E': {
+			string::size_type delimiter = scheduler_type.find(':');
+			if (delimiter != string::npos) {
+				quantum = stoi(scheduler_type.substr(1, delimiter));
+				maxprio = stoi(scheduler_type.substr(delimiter + 1, string::npos));
+			}
+			else {
+				quantum = stoi(scheduler_type.substr(1, string::npos));
+			}
+			s = new PREPRIO(quantum);
+			break;
+		}
+		default:
+			break;
+	}
+
 	event_queue *eq = new event_queue();
 
 	// read files
 	char *inputfile = argv[optind];
 	char *randfile = argv[optind + 1];
-	int maxprio = 4;
-	int quantum = 10000;
 	myrandom r(randfile);
 	ifstream input;
 	input.open(inputfile);
@@ -644,9 +807,6 @@ int main(int argc, char *argv[]) {
 		eq->put_event(e);
 		process_id++;
 	}
-
-	scheduler *s = new RR();
-	quantum = stoi(optarg);
 
 	simulation(s, eq, quantum, r);
 	print_scheduler(s->type);
