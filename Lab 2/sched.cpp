@@ -1,6 +1,5 @@
 /* Lab 2 - OS Spring 2019		*/
 /* Xinyi Liu (xl2700)			*/
-/* Compiler Version: gcc-4.9.2	*/
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -196,17 +195,6 @@ public:
 			}
 		}
 	};
-
-	/*
-	void rm_event(event *evt) {
-		for(list<event *>::iterator iter = q.begin(); iter != q.end(); iter++) {
-			if(evt == (*iter)) {
-				q.erase(iter);
-				break;
-			}
-		}
-	};
-	*/
 
 	int get_next_event_time() {
 		if(q.empty()) {
