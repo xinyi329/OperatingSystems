@@ -149,8 +149,8 @@ struct event {
 	state_t PREV;		// previous state
 	state_t NEXT;		// next state
 	transition_t TRANS;	// transition
-	int RCT;
-	int CCB;
+	int RCT;			// process RCT from last state, for preempt
+	int CCB;			// process CCB from last state, for preempt
 
 	event(int timestamp, process *p, state_t previous_state, state_t next_state, transition_t transition) {
 		TS = timestamp;
