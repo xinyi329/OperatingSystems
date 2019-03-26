@@ -110,7 +110,6 @@ char *getToken() {
 		}
 		else {
 			//cout << "case 4" << endl;
-			//
 			lineoffset = lineStr.length() + 1;
 			return NULL;
 		}
