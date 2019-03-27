@@ -95,6 +95,8 @@ struct process {
 	int RCT;			// remaining CPU time
 	int CCB;			// current CPU burst
 	int CIO;			// current IO burst
+	int PRCT;			// for preempt, previous remaining CPU time
+	int PCB;			// for preempt, previous CPU burst
 
 	process(int process_id, int arrival_time, int total_CPU_time, int CPU_burst, int IO_burst, int priority) {
 		PID = process_id;
@@ -110,6 +112,8 @@ struct process {
 		RCT = total_CPU_time;
 		CCB = 0;
 		CIO = 0;
+		PRCT = 0;
+		PCB = 0;
 	};
 };
 
@@ -149,8 +153,6 @@ struct event {
 	state_t PREV;		// previous state
 	state_t NEXT;		// next state
 	transition_t TRANS;	// transition
-	int RCT;			// process RCT from last state, for preempt
-	int CCB;			// process CCB from last state, for preempt
 
 	event(int timestamp, process *p, state_t previous_state, state_t next_state, transition_t transition) {
 		TS = timestamp;
@@ -158,8 +160,6 @@ struct event {
 		PREV = previous_state;
 		NEXT = next_state;
 		TRANS = transition;
-		RCT = p->RCT;
-		CCB = p->CCB;
 	};
 };
 
@@ -514,8 +514,8 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 						}
 					}
 					if(timestamp > 0 && timestamp != current_time && (p->PRIO - 1) > current_running_process->dPRIO) {
-						current_running_process->RCT = (*iter)->RCT - (current_time - current_running_process->STATE_TS);
-						current_running_process->CCB = (*iter)->CCB - (current_time - current_running_process->STATE_TS);
+						current_running_process->RCT = (*iter)->PROC->PRCT - (current_time - current_running_process->STATE_TS);
+						current_running_process->CCB = (*iter)->PROC->PCB - (current_time - current_running_process->STATE_TS);
 						eq->q.erase(iter);
 						event *temp = new event(current_time, current_running_process, RUNNING, READY, TRANS_TO_PREEMPT);
 						eq->put_event(temp);
@@ -540,16 +540,14 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 				stat[p->PID].CW += p->STATE_T;
 				// create event for either PREEMPT or BLOCKED
 				// RUNNING -> PREEMPT
-				int temp_RCT = p->RCT;
-				int temp_CCB = p->CCB;
+				p->PRCT = p->RCT;
+				p->PCB = p->CCB;
 				if(quantum < p->CCB) {
 					// DONE
 					if(p->RCT <= quantum) {
 						int timestamp = current_time + p->RCT;
 						p->RCT = 0;
 						event *temp = new event(timestamp, p, RUNNING, DONE, TRANS_TO_DONE);
-						temp->RCT = temp_RCT;
-						temp->CCB = temp_CCB;
 						eq->put_event(temp);
 					}
 					// PREEMPT
@@ -558,8 +556,6 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 						p->RCT -= quantum;
 						p->CCB -= quantum;
 						event *temp = new event(timestamp, p, RUNNING, READY, TRANS_TO_PREEMPT);
-						temp->RCT = temp_RCT;
-						temp->CCB = temp_CCB;
 						eq->put_event(temp);
 					}
 				}
@@ -570,8 +566,6 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 						int timestamp = current_time + p->RCT;
 						p->RCT = 0;
 						event *temp = new event(timestamp, p, RUNNING, DONE, TRANS_TO_DONE);
-						temp->RCT = temp_RCT;
-						temp->CCB = temp_CCB;
 						eq->put_event(temp);
 					}
 					// BLOCKED
@@ -580,8 +574,6 @@ void simulation(scheduler *s, event_queue *eq, int quantum, myrandom &r) {
 						p->RCT -= p->CCB;
 						p->CCB = 0;
 						event *temp = new event(timestamp, p, RUNNING, BLOCKED, TRANS_TO_BLOCKED);
-						temp->RCT = temp_RCT;
-						temp->CCB = temp_CCB;
 						eq->put_event(temp);
 					}
 				}
