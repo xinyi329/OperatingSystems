@@ -159,6 +159,8 @@ struct process_t {
 	}
 };
 
+vector<process_t*> process_list;
+
 struct instr_t {
 	string op;
 	int vpage;
@@ -243,6 +245,41 @@ public:
 		frame_t* f = frame_table[hand % frame_num];
 		hand++;
 		return f;
+	};
+};
+
+class Random : public pager_t {
+private:
+	myrandom* r;
+
+public:
+	Random(int fn, char* randfile) : pager_t(fn) {
+		r = new myrandom(randfile);
+	};
+
+	frame_t* select_victim_frame() {
+		int rand = r->get_random(frame_num);
+		frame_t* f = frame_table[rand];
+		return f;
+	};
+};
+
+class Clock : public pager_t {
+public:
+	Clock(int fn) : pager_t(fn) {};
+
+	frame_t* select_victim_frame() {
+		while(1) {
+			frame_t* f = frame_table[hand % frame_num];
+			hand++;
+			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			if(pte->REFERENCED) {
+				pte->REFERENCED = 0;
+			}
+			else {
+				return f;
+			}
+		}
 	};
 };
 
@@ -478,7 +515,7 @@ void simulation(pager_t* pager, vector<process_t*> &process_list, vector<instr_t
 int main(int argc, char *argv[]) {
 
 	pager_t* pager = nullptr;
-	pager = new FIFO(16);
+	pager = new Clock(16);
 
 	bool opt_O = true;
 	bool opt_P = true;
@@ -509,7 +546,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	vector<process_t*> process_list;
+	//vector<process_t*> process_list;
 
 	int proc_num = stoi(line);
 	for(int i = 0; i < proc_num; i++) {
@@ -549,6 +586,7 @@ int main(int argc, char *argv[]) {
 
 	simulation(pager, process_list, instr_list, opt_O, opt_P, opt_F, opt_S, opt_x);
 
+	// for input tests
 	//print_process_list(process_list);
 	//print_instr_list(instr_list);
 	//print_page_table(process_list[0]->page_table);
