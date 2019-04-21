@@ -283,6 +283,33 @@ public:
 	};
 };
 
+class NRU : public pager_t {
+public:
+	NRU(int fn) : pager_t(fn) {};
+
+	frame_t* select_victim_frame() {
+		
+	};
+};
+
+class Aging : public pager_t {
+public:
+	Aging(int fn) : pager_t(fn) {};
+
+	frame_t* select_victim_frame() {
+		
+	};
+};
+
+class WorkingSet : public pager_t {
+public:
+	WorkingSet(int fn) : pager_t(fn) {};
+
+	frame_t* select_victim_frame() {
+		
+	};
+};
+
 void print_process_list(vector<process_t*> &process_list) {
 	for(int i = 0; i < process_list.size(); i++) {
 		cout << "process " << process_list[i]->pid << "\n";
@@ -514,24 +541,80 @@ void simulation(pager_t* pager, vector<process_t*> &process_list, vector<instr_t
 
 int main(int argc, char *argv[]) {
 
+	// default settings
+	string algo = "f";
+	string options = "OPFS";
+	int frame_num = 128;
+
+	// read command
+	int c;
+	while(1) {
+		c = getopt(argc, argv, "a:o:f:");
+		if(c == -1)
+			break;
+		switch(c) {
+			case 'a':
+				algo = optarg;
+				break;
+			case 'o':
+				options = optarg;
+				break;
+			case 'f':
+				frame_num = atoi(optarg);
+				break;
+			default:
+				break;
+		}
+	}
+	char *inputfile = argv[optind];
+	char *randfile = argv[optind + 1];
+
+	// algo
 	pager_t* pager = nullptr;
-	pager = new Clock(16);
+	switch(algo[0]) {
+		case 'f':
+			pager = new FIFO(frame_num);
+			break;
+		case 'r':
+			pager = new Random(frame_num, randfile);
+			break;
+		case 'c':
+			pager = new Clock(frame_num);
+			break;
+		case 'e':
+			pager = new NRU(frame_num);
+			break;
+		case 'a':
+			pager = new Aging(frame_num);
+			break;
+		case 'w':
+			pager = new WorkingSet(frame_num);
+			break;
+		default:
+			pager = new FIFO(frame_num);
+			break;
+	}
 
-	bool opt_O = true;
-	bool opt_P = true;
-	bool opt_F = true;
-	bool opt_S = true;
+
+	// options
+	bool opt_O = false;
+	bool opt_P = false;
+	bool opt_F = false;
+	bool opt_S = false;
 	bool opt_x = false;
-
-	// read random file
-
-	//char *randfile = argv[optind + 1];
-	//myrandom r(randfile);
+	bool opt_y = false;
+	bool opt_f = false;
+	bool opt_a = false;
+	if(options.find("O") != string::npos) opt_O = true;
+	if(options.find("P") != string::npos) opt_P = true;
+	if(options.find("F") != string::npos) opt_F = true;
+	if(options.find("S") != string::npos) opt_S = true;
+	if(options.find("x") != string::npos) opt_x = true;
+	if(options.find("y") != string::npos) opt_y = true;
+	if(options.find("f") != string::npos) opt_f = true;
+	if(options.find("a") != string::npos) opt_a = true;
 
 	// read input file
-
-	//char *inputfile = argv[optind];
-	char* inputfile = argv[1];
 	ifstream input;
 	input.open(inputfile);
 	if(!input.is_open()) {
