@@ -98,6 +98,8 @@ struct vma_t {
 };
 
 struct pte_t {
+	// not used
+	unsigned int NOT_USED:19;
 	// optionally added
 	unsigned int FILE_MAPPED:1;
 	// must have
@@ -109,6 +111,7 @@ struct pte_t {
 	unsigned int FRAME_INDEX:7;
 
 	pte_t() {
+		NOT_USED = 0;
 		FILE_MAPPED = 0;
 		VALID = 0;
 		WRITE_PROTECTED = 0;
@@ -292,44 +295,52 @@ public:
 class NRU : public pager_t {
 private:
 	int last_instr;
-	frame_t* NRU_class[4];
 
 public:
 	NRU(int fn) : pager_t(fn) {
-		last_instr = 0;
+		last_instr = -1;
 	};
 
 	frame_t* select_victim_frame() {
-		// init class
-		NRU_class[0] = nullptr;
-		NRU_class[1] = nullptr;
-		NRU_class[2] = nullptr;
-		NRU_class[3] = nullptr;
-		frame_t* f;
+		int NRU_class[4];
+		NRU_class[0] = -1;
+		NRU_class[1] = -1;
+		NRU_class[2] = -1;
+		NRU_class[3] = -1;
+		int victim_index = hand % frame_num;
+		bool reset = curr_instr - last_instr >= 50? true : false;
 		for(int i = 0; i < frame_num; i++) {
-			f = frame_table[hand % frame_num];
-			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
-			int class_index = 2 * pte->REFERENCED + pte->MODIFIED;
-			if(NRU_class[class_index] == nullptr) {
-				NRU_class[class_index] = f;
-			}
+			frame_t* f = frame_table[hand % frame_num];
 			hand++;
+			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			int class_index = pte->REFERENCED * 2 + pte->MODIFIED;
+			if(NRU_class[class_index] == -1) {
+				NRU_class[class_index] = f->frame_index;
+				if(class_index == 0) {
+					if(reset) {
+						victim_index = f->frame_index;
+						break;
+					}
+					else {
+						return f;
+					}
+				}
+			}
 		}
 		for(int i = 0; i < 4; i++) {
-			if(NRU_class[i] != nullptr) {
-				hand = (NRU_class[i]->frame_index + 1) % frame_num;
-				f = NRU_class[i];
+			if(NRU_class[i] != -1) {
+				victim_index = NRU_class[i];
 				break;
 			}
 		}
-		// reset
-		if(curr_instr - last_instr >= 50) {
+		if(reset) {
 			for(int i = 0; i < frame_num; i++) {
 				process_list[frame_table[i]->pid]->page_table[frame_table[i]->vpage]->REFERENCED = 0;
 			}
 			last_instr = curr_instr;
 		}
-		return f;
+		hand = (victim_index + 1) % frame_num;
+		return frame_table[victim_index];
 	};
 };
 
