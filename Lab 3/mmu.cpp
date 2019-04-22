@@ -166,17 +166,23 @@ struct instr_t {
 	int vpage;
 };
 
+int curr_instr = 0;
+
 struct frame_t {
 	int frame_index;
 	int pid;
 	int vpage;
 	int mapped;
+	unsigned int age;
+	int tau;
 
 	frame_t(int i) {
 		frame_index = i;
 		pid = 0;
 		vpage = 0;
-		mapped = 0; 
+		mapped = 0;
+		age = 0;
+		tau = 0;
 	}
 };
 
@@ -271,8 +277,8 @@ public:
 	frame_t* select_victim_frame() {
 		while(1) {
 			frame_t* f = frame_table[hand % frame_num];
-			hand++;
 			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			hand++;
 			if(pte->REFERENCED) {
 				pte->REFERENCED = 0;
 			}
@@ -284,11 +290,46 @@ public:
 };
 
 class NRU : public pager_t {
+private:
+	int last_instr;
+	frame_t* NRU_class[4];
+
 public:
-	NRU(int fn) : pager_t(fn) {};
+	NRU(int fn) : pager_t(fn) {
+		last_instr = 0;
+	};
 
 	frame_t* select_victim_frame() {
-		
+		// init class
+		NRU_class[0] = nullptr;
+		NRU_class[1] = nullptr;
+		NRU_class[2] = nullptr;
+		NRU_class[3] = nullptr;
+		frame_t* f;
+		for(int i = 0; i < frame_num; i++) {
+			f = frame_table[hand % frame_num];
+			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			int class_index = 2 * pte->REFERENCED + pte->MODIFIED;
+			if(NRU_class[class_index] == nullptr) {
+				NRU_class[class_index] = f;
+			}
+			hand++;
+		}
+		for(int i = 0; i < 4; i++) {
+			if(NRU_class[i] != nullptr) {
+				hand = (NRU_class[i]->frame_index + 1) % frame_num;
+				f = NRU_class[i];
+				break;
+			}
+		}
+		// reset
+		if(curr_instr - last_instr >= 50) {
+			for(int i = 0; i < frame_num; i++) {
+				process_list[frame_table[i]->pid]->page_table[frame_table[i]->vpage]->REFERENCED = 0;
+			}
+			last_instr = curr_instr;
+		}
+		return f;
 	};
 };
 
@@ -297,7 +338,19 @@ public:
 	Aging(int fn) : pager_t(fn) {};
 
 	frame_t* select_victim_frame() {
-		
+		int victim_index = hand % frame_num;
+		for(int i = 0; i < frame_num; i++) {
+			frame_t* f = frame_table[hand % frame_num];
+			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			f->age = (f->age >> 1) + (pte->REFERENCED << 31);
+			pte->REFERENCED = 0;
+			if(f->age < frame_table[victim_index]->age) {
+				victim_index = hand % frame_num;
+			}
+			hand++;
+		}
+		hand = (victim_index + 1) % frame_num;
+		return frame_table[victim_index];
 	};
 };
 
@@ -306,7 +359,29 @@ public:
 	WorkingSet(int fn) : pager_t(fn) {};
 
 	frame_t* select_victim_frame() {
-		
+		int victim_index = hand % frame_num;
+		int age = -1;
+		for(int i = 0; i < frame_num; i++) {
+			frame_t* f = frame_table[hand % frame_num];
+			pte_t* pte = process_list[f->pid]->page_table[f->vpage];
+			if(pte->REFERENCED) {
+				f->tau = curr_instr;
+				pte->REFERENCED = 0;
+			}
+			else {
+				if (curr_instr - f->tau >= 50) {
+					hand++;
+					return f;
+				}
+				else if(curr_instr - f->tau > age) {
+					victim_index = hand % frame_num;
+					age = curr_instr - f->tau;
+				}
+			}
+			hand++;
+		}
+		hand = (victim_index + 1) % frame_num;
+		return frame_table[victim_index];
 	};
 };
 
@@ -350,7 +425,7 @@ void simulation(pager_t* pager, vector<process_t*> &process_list, vector<instr_t
 
 	process_t* curr_process = nullptr;
 
-	for(int curr_instr = 0; curr_instr < instr_list.size(); curr_instr++) {
+	for(curr_instr = 0; curr_instr < instr_list.size(); curr_instr++) {
 		string op = instr_list[curr_instr].op;
 		int vpage = instr_list[curr_instr].vpage;
 
@@ -381,13 +456,20 @@ void simulation(pager_t* pager, vector<process_t*> &process_list, vector<instr_t
 						curr_process->pstats.fouts++;
 					}
 					int frame_index = curr_process->page_table[i]->FRAME_INDEX;
+					pager->frame_table[frame_index]->pid = 0;
+					pager->frame_table[frame_index]->vpage = 0;
 					pager->frame_table[frame_index]->mapped = 0;
+					pager->frame_table[frame_index]->age = 0;
+					pager->frame_table[frame_index]->tau = 0;
 					pager->free_list.push_back(pager->frame_table[frame_index]);
 				}
+				curr_process->page_table[i]->FILE_MAPPED = 0;
 				curr_process->page_table[i]->VALID = 0;
+				curr_process->page_table[i]->WRITE_PROTECTED = 0;
 				curr_process->page_table[i]->MODIFIED = 0;
 				curr_process->page_table[i]->REFERENCED = 0;
 				curr_process->page_table[i]->PAGEDOUT = 0;
+				curr_process->page_table[i]->FRAME_INDEX = 0;
 			}
 			process_exits++;
 			curr_process = nullptr;
@@ -470,6 +552,8 @@ void simulation(pager_t* pager, vector<process_t*> &process_list, vector<instr_t
 				new_frame->pid = curr_process->pid;
 				new_frame->vpage = vpage;
 				new_frame->mapped = 1;
+				new_frame->age = 0;
+				new_frame->tau = curr_instr;
 				curr_process->pstats.maps++;
 
 				pte->VALID = 1;
@@ -544,7 +628,7 @@ int main(int argc, char *argv[]) {
 	// default settings
 	string algo = "f";
 	string options = "OPFS";
-	int frame_num = 128;
+	int frame_num = 16;
 
 	// read command
 	int c;
@@ -594,7 +678,6 @@ int main(int argc, char *argv[]) {
 			pager = new FIFO(frame_num);
 			break;
 	}
-
 
 	// options
 	bool opt_O = false;
