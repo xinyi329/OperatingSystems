@@ -1,7 +1,9 @@
 # Operating Systems
 
-Lab 1: [Linker](https://github.com/xinyi329/OperatingSystemsLabs/tree/master/Lab%201)
+Lab 1: [Linker](./Lab%201)
 
-Lab 2: [Scheduler](https://github.com/xinyi329/OperatingSystemsLabs/tree/master/Lab%202)
+Lab 2: [Scheduler](./Lab%202)
 
-Lab 3: [Virtual Memory Management](https://github.com/xinyi329/OperatingSystemsLabs/tree/master/Lab%203)
+Lab 3: [Virtual Memory Management](./Lab%203)
+
+Lab 4: [IO Scheduling](./Lab%204)
